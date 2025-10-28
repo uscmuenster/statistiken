@@ -16,6 +16,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: write  # wichtig, um Push ins Repo zu erlauben
+
 jobs:
   run-workflow:
     name: Execute selected workflow
@@ -24,6 +27,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,20 +52,6 @@ jobs:
           fi
           python -m volleystats.main --fed vbl --workflow "${WORKFLOW_CHOICE}" ${LOG_FLAG}
 
-      - name: Publish data directory to /data
-        if: always()
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /data
-          if [ -d "data" ]; then
-            sudo rm -rf /data/volleystats
-            sudo mkdir -p /data/volleystats
-            sudo cp -a data/. /data/volleystats/
-            sudo chown -R "$USER":"$USER" /data/volleystats
-          else
-            echo "No data directory generated; skipping copy to /data" >&2
-          fi
-
       - name: Upload collected data as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,3 +59,15 @@ jobs:
           name: volleystats-data
           path: data
           if-no-files-found: warn
+
+      - name: Commit and push CSVs
+        if: success() && (hashFiles('data/**/*.csv') != '')
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p docs/data
+          cp -r data/*.csv docs/data/ || echo "No CSV files found"
+          git add docs/data/*.csv || echo "Nothing to add"
+          git commit -m "chore: update volleystats CSV data [skip ci]" || echo "No changes to commit"
+          git push
