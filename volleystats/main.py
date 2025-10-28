@@ -6,6 +6,7 @@ from scrapy.crawler import CrawlerProcess
 from volleystats.spiders.match import HomeStatsSpider, GuestStatsSpider
 from volleystats.spiders.competition import CompetitionMatchesSpider
 from volleystats.version import __version__
+from volleystats.workflows import run_vbl_full_season_workflow
 
 version = __version__
 welcome_msg = f'''
@@ -34,33 +35,40 @@ def main():
 	)
 
 	parser.add_argument(
-		'--fed', '-f',
-		dest='fed',
-		required=True,
-		help='Federation acronym: <Fed_Acronym>-web.dataproject.com'
+	'--fed', '-f',
+	dest='fed',
+	required=True,
+	help='Federation acronym: <Fed_Acronym>-web.dataproject.com'
 	)
 
 	group = parser.add_mutually_exclusive_group(required=True)
 
 	group.add_argument(
-		'--match', '-m',
-		dest='match',
-		type=int,
-		help='ID of the match: <Fed_Acronym>-web.dataproject.com/MatchStatistics?mID=<Match_ID>'
+	'--match', '-m',
+	dest='match',
+	type=int,
+	help='ID of the match: <Fed_Acronym>-web.dataproject.com/MatchStatistics?mID=<Match_ID>'
 	)
 
 	group.add_argument(
-		'--comp', '-c',
-		dest='comp',
-		type=int,
-		help='ID of the competition: <Fed_Acronym>-web.dataproject.com/CompetitionMatches?ID=<Competition_ID>'
+	'--comp', '-c',
+	dest='comp',
+	type=int,
+	help='ID of the competition: <Fed_Acronym>-web.dataproject.com/CompetitionMatches?ID=<Competition_ID>'
 	)
 
 	group.add_argument(
-		'--batch', '-b',
-		dest='batch',
-		type=str,
-		help='CSV file path with Match IDs (Competition Matches output): data/<Fed_Acronym>-<Competition_ID>-<start_year>-<end_year>-competition-matches.csv'
+	'--batch', '-b',
+	dest='batch',
+	type=str,
+	help='CSV file path with Match IDs (Competition Matches output): data/<Fed_Acronym>-<Competition_ID>-<start_year>-<end_year>-competition-matches.csv'
+	)
+
+	group.add_argument(
+	'--workflow', '-w',
+	dest='workflow',
+	choices=['vbl-full'],
+	help='Run a predefined workflow (e.g. vbl-full for the German Bundesliga)'
 	)
 
 	parser.add_argument(
@@ -81,6 +89,8 @@ def main():
 
 	args = vars(parser.parse_args())
 
+	args['fed'] = args['fed'].lower()
+
 	print(started_msg)
 
 	logging.disable(logging.CRITICAL)
@@ -88,7 +98,17 @@ def main():
 	if args['log']:
 		logging.disable(logging.NOTSET)
 
-	if args['match']:
+	if args['workflow']:
+		workflow = args['workflow']
+
+		if workflow == 'vbl-full':
+			if args['fed'] != 'vbl':
+				parser.error('The vbl-full workflow can only be used with --fed vbl')
+
+			run_vbl_full_season_workflow(log=args['log'])
+
+		print(finished_msg)
+	elif args['match']:
 		fed_acronym = args['fed']
 		match_id = args['match']
 
@@ -106,7 +126,7 @@ def main():
 		match_process.start()
 
 		print(finished_msg)
-	elif args['comp'] or (args['comp'] and args['pid']):
+	elif args['comp']:
 		fed_acronym = args['fed']
 		competition_id = args['comp']
 		competition_pid = args['pid']
