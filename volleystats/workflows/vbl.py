@@ -159,17 +159,26 @@ def _collect_competition_phase(phase: Dict[str, str], *, enable_log: bool):
 def _resolve_competition_file(fed_acronym: str, competition_id: str, competition_pid: str) -> Path:
     pid_prefix = f"{competition_pid}-" if competition_pid else ""
     renamed_pattern = f"{fed_acronym}-{competition_id}-{pid_prefix}*-competition-matches.csv"
-    candidates = sorted(
-        _DATA_DIRECTORY.glob(renamed_pattern),
-        key=lambda candidate: candidate.stat().st_mtime,
-        reverse=True,
-    )
-    if candidates:
-        return candidates[0]
 
     fallback = _DATA_DIRECTORY / (
         f"{fed_acronym}-{competition_id}-{competition_pid}-competition_matches.csv"
     )
+    fallback_mtime = fallback.stat().st_mtime if fallback.exists() else None
+
+    candidates_with_mtime = [
+        (candidate.stat().st_mtime, candidate)
+        for candidate in _DATA_DIRECTORY.glob(renamed_pattern)
+    ]
+    candidates_with_mtime.sort(key=lambda entry: entry[0], reverse=True)
+
+    if fallback_mtime is not None:
+        candidates_with_mtime = [
+            entry for entry in candidates_with_mtime if entry[0] >= fallback_mtime
+        ]
+
+    if candidates_with_mtime:
+        return candidates_with_mtime[0][1]
+
     if fallback.exists():
         return fallback
 
