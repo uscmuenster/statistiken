@@ -7,6 +7,7 @@ from ..utils import *
 
 # Known competition defaults to ensure we only scrape the intended season.
 _DEFAULT_SEASON_RANGES = {
+    ("vbl", "160"): (2025, 2026),  # 1. Bundesliga Männer 2025/26
     ("vbl", "185"): (2025, 2026),  # 1. Bundesliga Frauen 2025/26
 }
 
