@@ -4,6 +4,12 @@ import re
 
 from ..utils import *
 
+
+# Known competition defaults to ensure we only scrape the intended season.
+_DEFAULT_SEASON_RANGES = {
+    ("vbl", "162"): (2025, 2026),  # 1. Bundesliga Frauen 2025/26
+}
+
 class CompetitionMatchesSpider(scrapy.Spider):
     name = 'competition_matches'
 
@@ -22,6 +28,14 @@ class CompetitionMatchesSpider(scrapy.Spider):
         self.fed_acronym = fed_acronym
         self.season_start_year = int(season_start_year) if season_start_year else None
         self.season_end_year = int(season_end_year) if season_end_year else None
+
+        if self.season_start_year is None and self.season_end_year is None:
+            default_range = _DEFAULT_SEASON_RANGES.get(
+                (self.fed_acronym, str(self.competition_id))
+            )
+            if default_range:
+                self.season_start_year, self.season_end_year = default_range
+
         if self.season_start_year and self.season_end_year:
             if self.season_end_year < self.season_start_year:
                 raise ValueError('season_end_year must be greater than or equal to season_start_year')
