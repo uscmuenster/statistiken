@@ -27,6 +27,7 @@ pip install volleystats
     - [Match](#match)
     - [Competition Matches](#competition-matches)
     - [Competition Matches with PID](#competition-matches-with-pid)
+    - [German Volleyball Bundesliga workflow](#german-volleyball-bundesliga-workflow)
     - [Matches via Competition Matches file](#matches-via-competition-matches-file)
     - [Help](#help)
     - [Log](#log)
@@ -158,6 +159,18 @@ volleystats --fed FED --comp COMP --pid PID
         ```
         data/vbl-162-173-2022-2023-competition-matches.csv
         ```
+
+### German Volleyball Bundesliga workflow
+
+The Bundesliga spans multiple competition phases (regular season, intermediate rounds and playoffs for men, plus the women's season).
+The `vbl-full` workflow automates the complete extraction: it downloads each competition match list and then scrapes all unique match statistics.
+
+```shell
+volleystats --fed vbl --workflow vbl-full
+```
+
+The workflow writes the intermediate competition CSV files to `data/` and reuses them to collect the individual match statistics.
+Use `--log` to see the Scrapy logs during the run.
     ---
     - Data Project website: https://vbl-web.dataproject.com/CompetitionMatches.aspx?ID=162&PID=174
     - Federation Acronym: VBL

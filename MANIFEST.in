@@ -1,1 +1,2 @@
 include scrapy.cfg
+recursive-include volleystats/workflows *.yml
