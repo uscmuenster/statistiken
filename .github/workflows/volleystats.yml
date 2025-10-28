@@ -1,0 +1,48 @@
+name: Run Volleystats Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: 'Select the workflow to run'
+        required: true
+        default: vbl-full
+        type: choice
+        options:
+          - vbl-full
+      log:
+        description: 'Enable verbose Scrapy logging'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  run-workflow:
+    name: Execute selected workflow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run workflow
+        env:
+          WORKFLOW_CHOICE: ${{ github.event.inputs.workflow }}
+          LOG_ENABLED: ${{ github.event.inputs.log }}
+        run: |
+          set -euo pipefail
+          LOG_FLAG=""
+          if [ "${LOG_ENABLED}" = "true" ]; then
+            LOG_FLAG="--log"
+          fi
+          python -m volleystats.main --fed vbl --workflow "${WORKFLOW_CHOICE}" ${LOG_FLAG}
