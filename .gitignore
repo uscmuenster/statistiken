@@ -1,7 +1,6 @@
 # dev
 volleystats/__pycache__
 volleystats/spiders/__pycache__
-/data
 
 # build
 /dist/
