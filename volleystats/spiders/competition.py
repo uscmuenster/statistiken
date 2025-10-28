@@ -7,11 +7,24 @@ from ..utils import *
 class CompetitionMatchesSpider(scrapy.Spider):
     name = 'competition_matches'
 
-    def __init__(self, fed_acronym='', competition_id='', competition_pid='', **kwargs):
+    def __init__(
+        self,
+        fed_acronym='',
+        competition_id='',
+        competition_pid='',
+        season_start_year=None,
+        season_end_year=None,
+        **kwargs,
+    ):
         self.start_urls = [f'https://{fed_acronym}-web.dataproject.com/CompetitionMatches.aspx?ID={competition_id}&PID={competition_pid}']
         self.competition_id = competition_id
         self.competition_pid = competition_pid
         self.fed_acronym = fed_acronym
+        self.season_start_year = int(season_start_year) if season_start_year else None
+        self.season_end_year = int(season_end_year) if season_end_year else None
+        if self.season_start_year and self.season_end_year:
+            if self.season_end_year < self.season_start_year:
+                raise ValueError('season_end_year must be greater than or equal to season_start_year')
         match_id = ''
         match_date = ''
         match_location = ''
@@ -21,6 +34,7 @@ class CompetitionMatchesSpider(scrapy.Spider):
         guest_points = ''
         self.first_item_date = ''
         self.last_item_date = ''
+        self.items_scraped = 0
 
         super().__init__(**kwargs)
 
@@ -39,6 +53,22 @@ class CompetitionMatchesSpider(scrapy.Spider):
 
             match_date_text = match.xpath("./div/div/div/p[1]/span[1]/text()").get()
             match_date = parse_short_date(match_date_text)
+
+            match_year = None
+            if match_date:
+                try:
+                    match_year = int(match_date.split('-')[0])
+                except (ValueError, AttributeError):
+                    match_year = None
+
+            if match_year is not None:
+                if self.season_start_year and match_year < self.season_start_year:
+                    continue
+                if self.season_end_year and match_year > self.season_end_year:
+                    continue
+            elif self.season_start_year or self.season_end_year:
+                # Skip matches with unparsable dates when a season filter is active.
+                continue
 
             match_location = match.xpath("./div/div/div/p[2]/span[1]/text()").get()
             if match_location:
@@ -67,10 +97,17 @@ class CompetitionMatchesSpider(scrapy.Spider):
             }
 
             competition_items.append(competition)
+            self.items_scraped += 1
             yield competition
 
-        first_date = competition_items[0]['Match Date']
-        last_date = competition_items[-1]['Match Date']
+        if not competition_items:
+            self.first_item_date = ''
+            self.last_item_date = ''
+            return
+
+        sorted_dates = sorted(item['Match Date'] for item in competition_items if item['Match Date'])
+        first_date = sorted_dates[0]
+        last_date = sorted_dates[-1]
 
         regex = r"\b\d{4}\b"
         match_start = re.search(regex, first_date)
@@ -81,18 +118,26 @@ class CompetitionMatchesSpider(scrapy.Spider):
 
         if match_final:
              self.last_item_date = match_final.group()
-        
+
     def closed(spider, reason):
         src = f'data/{spider.fed_acronym}-{spider.competition_id}-{spider.competition_pid}-competition_matches.csv'
 
-        if spider.competition_pid != None:
-            spider.competition_pid = f'{spider.competition_pid}-'
+        pid_segment = f'{spider.competition_pid}-' if spider.competition_pid else ''
 
-        if spider.competition_pid == None:
-            spider.competition_pid = ''
+        if not spider.items_scraped or not spider.first_item_date or not spider.last_item_date:
+            if os.path.exists(src):
+                print(
+                    'volleystats: no matches met the season filter; '
+                    f'leaving {src} unchanged'
+                )
+            else:
+                print('volleystats: no competition matches were scraped')
+            return
 
-
-        dst = f'data/{spider.fed_acronym}-{spider.competition_id}-{spider.competition_pid}{spider.first_item_date}-{spider.last_item_date}-competition-matches.csv'
+        dst = (
+            f'data/{spider.fed_acronym}-{spider.competition_id}-{pid_segment}'
+            f'{spider.first_item_date}-{spider.last_item_date}-competition-matches.csv'
+        )
 
         try:
             os.rename(src, dst)
