@@ -40,16 +40,16 @@ _VBL_COMPETITION_PHASES: Sequence[Dict[str, str]] = (
         "competition_pid": "168",
     },
     {
-        "label": "1. Bundesliga Frauen - Hauptrunde",
+        "label": "1. Bundesliga Frauen 2025/26 - Hauptrunde",
         "fed_acronym": "vbl",
-        "competition_id": "162",
-        "competition_pid": "173",
+        "competition_id": "185",
+        "competition_pid": "209",
     },
     {
-        "label": "1. Bundesliga Frauen - Playoffs",
+        "label": "1. Bundesliga Frauen 2025/26 - Playoffs",
         "fed_acronym": "vbl",
-        "competition_id": "162",
-        "competition_pid": "174",
+        "competition_id": "185",
+        "competition_pid": "210",
     },
 )
 
