@@ -87,6 +87,22 @@ def main():
 		help='View the logging during scraping'
 	)
 
+	parser.add_argument(
+		'--season-start',
+		dest='season_start',
+		type=int,
+		required=False,
+		help='Filter competition matches to those not earlier than this year'
+	)
+
+	parser.add_argument(
+		'--season-end',
+		dest='season_end',
+		type=int,
+		required=False,
+		help='Filter competition matches to those not later than this year'
+	)
+
 	args = vars(parser.parse_args())
 
 	args['fed'] = args['fed'].lower()
@@ -130,6 +146,8 @@ def main():
 		fed_acronym = args['fed']
 		competition_id = args['comp']
 		competition_pid = args['pid']
+		season_start_year = args['season_start']
+		season_end_year = args['season_end']
 
 		comp_process = CrawlerProcess(settings={
 			'FEEDS': {
@@ -140,7 +158,14 @@ def main():
 			},
 		})
 
-		comp_process.crawl(CompetitionMatchesSpider, fed_acronym=fed_acronym, competition_id=competition_id, competition_pid=competition_pid)
+		comp_process.crawl(
+			CompetitionMatchesSpider,
+			fed_acronym=fed_acronym,
+			competition_id=competition_id,
+			competition_pid=competition_pid,
+			season_start_year=season_start_year,
+			season_end_year=season_end_year,
+		)
 		comp_process.start()
 
 		print(finished_msg)
