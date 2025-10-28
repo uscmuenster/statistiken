@@ -3,57 +3,21 @@
 from __future__ import annotations
 
 import csv
+import importlib.resources as pkg_resources
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Set
 
-from scrapy.crawler import CrawlerRunner
-from scrapy.settings import Settings
-from scrapy.utils.reactor import install_reactor
+import yaml
+from scrapy.crawler import CrawlerProcess
 
 from ..spiders.competition import CompetitionMatchesSpider
 from ..spiders.match import GuestStatsSpider, HomeStatsSpider
 
 
-_VBL_COMPETITION_PHASES: Sequence[Dict[str, str]] = (
-    {
-        "label": "1. Bundesliga Männer - Hauptrunde",
-        "fed_acronym": "vbl",
-        "competition_id": "160",
-        "competition_pid": "169",
-    },
-    {
-        "label": "1. Bundesliga Männer - Zwischenrunde 1-4",
-        "fed_acronym": "vbl",
-        "competition_id": "160",
-        "competition_pid": "170",
-    },
-    {
-        "label": "1. Bundesliga Männer - Zwischenrunde 5-8",
-        "fed_acronym": "vbl",
-        "competition_id": "160",
-        "competition_pid": "171",
-    },
-    {
-        "label": "1. Bundesliga Männer - Playoffs",
-        "fed_acronym": "vbl",
-        "competition_id": "160",
-        "competition_pid": "168",
-    },
-    {
-        "label": "1. Bundesliga Frauen - Hauptrunde",
-        "fed_acronym": "vbl",
-        "competition_id": "162",
-        "competition_pid": "173",
-    },
-    {
-        "label": "1. Bundesliga Frauen - Playoffs",
-        "fed_acronym": "vbl",
-        "competition_id": "162",
-        "competition_pid": "174",
-    },
-)
-
 _DATA_DIRECTORY = Path("data")
+_PHASES_YAML = "vbl_phases.yml"
+_REQUIRED_PHASE_KEYS = {"label", "fed_acronym", "competition_id", "competition_pid"}
 
 _PROJECT_SETTINGS = Settings()
 _PROJECT_SETTINGS.setmodule("volleystats.settings", priority="project")
@@ -73,39 +37,26 @@ def _create_runner(extra_settings: Dict[str, object]) -> CrawlerRunner:
 def run_vbl_full_season_workflow(*, log: bool = False) -> None:
     """Collect competitions and match statistics for the Bundesliga."""
 
+    phases = _load_competition_phases()
+
     _DATA_DIRECTORY.mkdir(exist_ok=True)
 
     unique_match_ids: List[str] = []
     seen_match_ids: Set[str] = set()
 
-    @defer.inlineCallbacks
-    def _run_workflow():
-        for phase in _VBL_COMPETITION_PHASES:
-            print(f"volleystats: collecting {phase['label']}")
-            competition_file = yield _collect_competition_phase(phase, enable_log=log)
-            phase_match_ids = _read_match_ids(competition_file)
-            fresh_ids = [
-                match_id for match_id in phase_match_ids if match_id not in seen_match_ids
-            ]
-            if not fresh_ids:
-                print("volleystats: no new matches found for this phase")
-                continue
+    for phase in phases:
+        print(f"volleystats: collecting {phase['label']}")
+        competition_file = _collect_competition_phase(phase, enable_log=log)
+        phase_match_ids = _read_match_ids(competition_file)
+        fresh_ids = [match_id for match_id in phase_match_ids if match_id not in seen_match_ids]
+        if not fresh_ids:
+            print("volleystats: no new matches found for this phase")
+            continue
 
-            unique_match_ids.extend(fresh_ids)
-            seen_match_ids.update(fresh_ids)
-            print(
-                "volleystats: added {fresh} matches (total unique: {total})".format(
-                    fresh=len(fresh_ids), total=len(unique_match_ids)
-                )
-            )
-
-        if not unique_match_ids:
-            print("volleystats: no matches queued for scraping")
-            return
-
-        print("volleystats: scraping match statistics for queued matches")
-        yield _collect_match_statistics(
-            _VBL_COMPETITION_PHASES[0]["fed_acronym"], unique_match_ids, enable_log=log
+        unique_match_ids.extend(fresh_ids)
+        seen_match_ids.update(fresh_ids)
+        print(
+            f"volleystats: added {len(fresh_ids)} matches (total unique: {len(unique_match_ids)})"
         )
         print("volleystats: Bundesliga workflow finished")
 
@@ -142,7 +93,69 @@ def _collect_competition_phase(phase: Dict[str, str], *, enable_log: bool):
         }
     )
 
-    yield runner.crawl(
+    if not unique_match_ids:
+        print("volleystats: no matches queued for scraping")
+        return
+
+    print("volleystats: scraping match statistics for queued matches")
+    _collect_match_statistics(phases[0]["fed_acronym"], unique_match_ids, enable_log=log)
+    print("volleystats: Bundesliga workflow finished")
+
+
+@lru_cache()
+def _load_competition_phases() -> Sequence[Dict[str, str]]:
+    """Load the Bundesliga competition phases from the YAML descriptor."""
+
+    with pkg_resources.files(__package__).joinpath(_PHASES_YAML).open(
+        "r", encoding="utf-8"
+    ) as yaml_file:
+        payload = yaml.safe_load(yaml_file) or {}
+
+    phases = payload.get("phases", [])
+    if not isinstance(phases, list) or not phases:
+        raise ValueError(
+            "volleystats: Bundesliga workflow configuration is missing phases"
+        )
+
+    normalized_phases: List[Dict[str, str]] = []
+    for index, phase in enumerate(phases, start=1):
+        if not isinstance(phase, dict):
+            raise TypeError(
+                "volleystats: each phase in the Bundesliga workflow must be a mapping"
+            )
+
+        missing_keys = _REQUIRED_PHASE_KEYS - phase.keys()
+        if missing_keys:
+            raise KeyError(
+                "volleystats: phase #{index} is missing required keys: {missing}".format(
+                    index=index, missing=", ".join(sorted(missing_keys))
+                )
+            )
+
+        normalized_phases.append(
+            {
+                key: str(phase[key]).strip()
+                for key in _REQUIRED_PHASE_KEYS
+            }
+        )
+
+    return tuple(normalized_phases)
+
+
+def _collect_competition_phase(phase: Dict[str, str], *, enable_log: bool) -> Path:
+    feeds_settings = {
+        "FEEDS": {
+            "data/%(fed_acronym)s-%(competition_id)s-%(competition_pid)s-%(name)s.csv": {
+                "format": "csv",
+                "overwrite": True,
+            }
+        },
+        "LOG_ENABLED": enable_log,
+    }
+
+    competition_process = CrawlerProcess(settings=feeds_settings)
+
+    competition_process.crawl(
         CompetitionMatchesSpider,
         fed_acronym=phase["fed_acronym"],
         competition_id=phase["competition_id"],

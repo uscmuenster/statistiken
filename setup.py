@@ -44,9 +44,13 @@ setup(
     ],
     python_requires='>=3.8',
     install_requires=install_requires,
+    include_package_data=True,
+    package_data={
+        'volleystats': ['workflows/*.yml'],
+    },
     entry_points = {
-		'console_scripts': [
-			'volleystats = volleystats.main:main',
+                'console_scripts': [
+                        'volleystats = volleystats.main:main',
 		],
 	},
 )
